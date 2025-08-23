@@ -24,8 +24,6 @@ class DaemonConfig:
     pid_file: str
     log_file: str
     sync_interval: int
-    watch_files: bool
-    ignore_patterns: List[str]
 
 
 @dataclass
@@ -75,9 +73,7 @@ class Config:
         daemon_config = DaemonConfig(
             pid_file=daemon_data.get('pid_file', '/tmp/yadisk_sync_daemon.pid'),
             log_file=daemon_data.get('log_file', '/tmp/yadisk_sync_daemon.log'),
-            sync_interval=daemon_data.get('sync_interval', 300),
-            watch_files=daemon_data.get('watch_files', True),
-            ignore_patterns=daemon_data.get('ignore_patterns', [])
+            sync_interval=daemon_data.get('sync_interval', 300)
         )
         
         return cls(
@@ -137,9 +133,7 @@ class Config:
             'daemon': {
                 'pid_file': self.daemon.pid_file,
                 'log_file': self.daemon.log_file,
-                'sync_interval': self.daemon.sync_interval,
-                'watch_files': self.daemon.watch_files,
-                'ignore_patterns': self.daemon.ignore_patterns
+                'sync_interval': self.daemon.sync_interval
             }
         }
         

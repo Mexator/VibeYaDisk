@@ -66,9 +66,6 @@ class SyncManager:
     
     def start_file_watching(self) -> None:
         """Start watching files for changes."""
-        if not self.config.daemon.watch_files:
-            return
-        
         self.observer = Observer()
         
         for sync_dir in self.config.sync_directories:

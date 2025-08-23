@@ -355,14 +355,6 @@ daemon:
   pid_file: "/tmp/yadisk_sync_daemon.pid"
   log_file: "/tmp/yadisk_sync_daemon.log"
   sync_interval: 300
-  watch_files: true
-  ignore_patterns:
-    - "*.tmp"
-    - "*.log"
-    - ".DS_Store"
-    - "__pycache__"
-    - ".git"
-    - ".venv"
 """
     
     try:

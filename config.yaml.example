@@ -16,6 +16,7 @@ yadisk_root: "/myYaDisk"
 local_root: "/home/anton/myYaDisk"
 
 # Sync directories configuration
+# Sync modes: upload, download, bidirectional
 sync_directories:
   # Documents - bidirectional sync
   - local_path: "documents"
@@ -37,26 +38,3 @@ daemon:
   pid_file: "/tmp/yadisk_sync_daemon.pid"
   log_file: "/tmp/yadisk_sync_daemon.log"
   sync_interval: 300  # 5 minutes
-  watch_files: true
-  ignore_patterns:
-    - "*.tmp"
-    - "*.log"
-    - "*.swp"
-    - "*.bak"
-    - ".DS_Store"
-    - "Thumbs.db"
-    - "__pycache__"
-    - ".git"
-    - ".gitignore"
-    - ".venv"
-    - "venv"
-    - "node_modules"
-    - ".idea"
-    - ".vscode"
-    - "*.pyc"
-    - ".pytest_cache"
-    - "*.pid"
-    - "config.yaml"
-    - "config.yaml.example"
-
-# Sync modes: upload, download, bidirectional
