@@ -81,27 +81,53 @@ The application uses a YAML configuration file (`config.yaml`) for all settings.
 
 ### Basic Commands
 
+You can run commands using any of these methods:
+
+```bash
+# Method 1: Using the installed command (after pip install -e .)
+yadisk-sync get-token
+yadisk-sync start
+yadisk-sync stop
+
+# Method 2: Using Python module syntax
+python -m yadisk_sync get-token
+python -m yadisk_sync start
+python -m yadisk_sync stop
+
+# Method 3: Using the launcher script
+./yadisk-sync get-token
+./yadisk-sync start
+./yadisk-sync stop
+
+# Method 4: From the project directory
+python main.py get-token
+python main.py start
+python main.py stop
+```
+
+#### Available Commands
+
 ```bash
 # Get OAuth token using application credentials
-python main.py get-token
+yadisk-sync get-token
 
 # Test the configuration and connection
-python main.py test
+yadisk-sync test
 
 # Start the daemon
-python main.py start
+yadisk-sync start
 
 # Stop the daemon
-python main.py stop
+yadisk-sync stop
 
 # Check daemon status
-python main.py status
+yadisk-sync status
 
 # Perform a one-time sync
-python main.py sync
+yadisk-sync sync
 
 # View daemon logs
-python main.py logs
+yadisk-sync logs
 ```
 
 ## File Structure

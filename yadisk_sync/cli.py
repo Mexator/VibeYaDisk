@@ -24,6 +24,31 @@ def setup_logging(verbose: bool = False):
         logger.add(sys.stderr, level="INFO")
 
 
+def find_config_file(config_path):
+    """Find configuration file in multiple possible locations."""
+    # If it's an absolute path, just return it
+    if os.path.isabs(config_path):
+        return config_path
+    
+    # Check current directory
+    if os.path.exists(config_path):
+        return config_path
+    
+    # Check in the package directory
+    package_dir = Path(__file__).parent.parent
+    package_config = package_dir / config_path
+    if package_config.exists():
+        return str(package_config)
+    
+    # Check in user's home directory
+    home_config = Path.home() / f".{config_path}"
+    if home_config.exists():
+        return str(home_config)
+    
+    # Return original path if not found anywhere
+    return config_path
+
+
 @click.group()
 @click.option('--config', '-c', default='config.yaml', help='Configuration file path')
 @click.option('--verbose', '-v', is_flag=True, help='Enable verbose logging')
@@ -34,7 +59,7 @@ def cli(ctx, config, verbose):
     
     # Ensure context object exists
     ctx.ensure_object(dict)
-    ctx.obj['config_path'] = config
+    ctx.obj['config_path'] = find_config_file(config)
 
 
 @cli.command()

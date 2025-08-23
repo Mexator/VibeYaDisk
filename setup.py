@@ -44,7 +44,7 @@ setup(
     install_requires=requirements,
     entry_points={
         "console_scripts": [
-            "yadisk-sync=main:cli",
+            "yadisk-sync=yadisk_sync.cli:cli",
         ],
     },
     include_package_data=True,
