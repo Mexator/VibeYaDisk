@@ -4,7 +4,7 @@ CLI interface for Yandex.Disk Sync Daemon.
 
 import os
 import sys
-import asyncio
+import yadisk
 from pathlib import Path
 import click
 from loguru import logger
@@ -58,34 +58,31 @@ def get_token(ctx):
         
         logger.info("Starting OAuth token generation...")
         
-        async def get_token_async():
-            import yadisk
-            
-            async with yadisk.AsyncClient(config.app_id, config.app_secret) as client:
-                url = client.get_code_url()
-                
-                logger.info(f"Please visit the following URL to authorize the application:")
-                logger.info(f"{url}")
-                logger.info("")
-                code = input("Enter the confirmation code: ")
-                
-                try:
-                    response = await client.get_token(code)
-                except yadisk.exceptions.BadRequestError:
-                    logger.error("Invalid confirmation code.")
-                    return None
-                
-                client.token = response.access_token
-                
-                if await client.check_token():
-                    logger.info("Successfully received token!")
-                    return response.access_token
-                else:
-                    logger.error("Something went wrong with token validation.")
-                    return None
         
-        # Run the async function
-        token = asyncio.run(get_token_async())
+        client = yadisk.Client(config.app_id, config.app_secret)
+        
+        # Get authorization URL
+        url = client.get_code_url()
+        
+        logger.info(f"Please visit the following URL to authorize the application:")
+        logger.info(f"{url}")
+        logger.info("")
+        code = input("Enter the confirmation code: ")
+        
+        try:
+            response = client.get_token(code)
+        except yadisk.exceptions.BadRequestError:
+            logger.error("Invalid confirmation code.")
+            sys.exit(1)
+        
+        client.token = response.access_token
+        
+        if client.check_token():
+            logger.info("Successfully received token!")
+            token = response.access_token
+        else:
+            logger.error("Something went wrong with token validation.")
+            sys.exit(1)
         
         if token:
             # Update the configuration with the new token
