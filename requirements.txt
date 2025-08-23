@@ -1,0 +1,23 @@
+# Core Yandex.Disk library with synchronous API support
+yadisk[sync-defaults]==3.4.0
+
+# CLI framework
+click==8.1.7
+
+# Configuration management
+pyyaml==6.0.1
+
+# File system monitoring
+watchdog==3.0.0
+
+# Daemon process management
+python-daemon==3.0.1
+
+# System utilities
+psutil==5.9.6
+
+# Advanced logging
+loguru==0.7.2
+
+# HTTP client (included with yadisk[sync-defaults] but listed for clarity)
+requests>=2.31.0
