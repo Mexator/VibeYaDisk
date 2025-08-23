@@ -1,0 +1,62 @@
+# Yandex.Disk Sync Daemon Configuration
+# Copy this file to config.yaml and customize it for your setup
+
+# Yandex.Disk OAuth token (generate with: python main.py get-token)
+token: "your_yandex_disk_token_here"
+
+# Application credentials for OAuth token generation
+# Get from: https://yandex.ru/dev/disk/rest/
+app_id: "your_application_id_here"
+app_secret: "your_application_secret_here"
+
+# Root folder on Yandex.Disk
+yadisk_root: "/myYaDisk"
+
+# Local root directory
+local_root: "/home/anton/myYaDisk"
+
+# Sync directories configuration
+sync_directories:
+  # Documents - bidirectional sync
+  - local_path: "documents"
+    yadisk_path: "documents"
+    sync_mode: "bidirectional"
+    
+  # Photos - upload only (backup)
+  - local_path: "photos"
+    yadisk_path: "photos"
+    sync_mode: "upload"
+    
+  # Backups - download only (restore)
+  - local_path: "backups"
+    yadisk_path: "backups"
+    sync_mode: "download"
+
+# Daemon settings
+daemon:
+  pid_file: "/tmp/yadisk_sync_daemon.pid"
+  log_file: "/tmp/yadisk_sync_daemon.log"
+  sync_interval: 300  # 5 minutes
+  watch_files: true
+  ignore_patterns:
+    - "*.tmp"
+    - "*.log"
+    - "*.swp"
+    - "*.bak"
+    - ".DS_Store"
+    - "Thumbs.db"
+    - "__pycache__"
+    - ".git"
+    - ".gitignore"
+    - ".venv"
+    - "venv"
+    - "node_modules"
+    - ".idea"
+    - ".vscode"
+    - "*.pyc"
+    - ".pytest_cache"
+    - "*.pid"
+    - "config.yaml"
+    - "config.yaml.example"
+
+# Sync modes: upload, download, bidirectional
