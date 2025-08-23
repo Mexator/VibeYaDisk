@@ -131,6 +131,16 @@ class YadiskSyncDaemon:
         if log_dir and not os.path.exists(log_dir):
             os.makedirs(log_dir, exist_ok=True)
         
+        # Check if daemon is already running
+        if self.status():
+            logger.error("Daemon is already running")
+            return
+        
+        # Clean up any stale PID file
+        if os.path.exists(self.config.daemon.pid_file):
+            logger.warning("Found stale PID file, removing it")
+            os.remove(self.config.daemon.pid_file)
+        
         # Configure daemon context
         self.daemon_context = daemon.DaemonContext(
             working_directory=self.config.local_root,
@@ -170,45 +180,108 @@ class YadiskSyncDaemon:
         finally:
             self.sync_manager.stop()
             logger.info("Yadisk Sync Daemon stopped")
+            
+            # Clean up PID file
+            if os.path.exists(self.config.daemon.pid_file):
+                os.remove(self.config.daemon.pid_file)
+                logger.info("Cleaned up PID file")
     
     def _signal_handler(self, signo, frame) -> None:
         """Handle termination signals."""
         logger.info(f"Received signal {signo}")
         self.sync_manager.stop()
+        
+        # Clean up PID file
+        if os.path.exists(self.config.daemon.pid_file):
+            os.remove(self.config.daemon.pid_file)
+            logger.info("Cleaned up PID file")
     
     def stop(self) -> None:
         """Stop the daemon process."""
-        if self.daemon_context and self.daemon_context.pidfile:
+        try:
+            if not os.path.exists(self.config.daemon.pid_file):
+                logger.info("Daemon is not running (no PID file found)")
+                return
+            
+            with open(self.config.daemon.pid_file, 'r') as f:
+                pid = int(f.read().strip())
+            
+            # Check if process is actually running
             try:
-                with open(self.config.daemon.pid_file, 'r') as f:
-                    pid = int(f.read().strip())
-                
-                os.kill(pid, signal.SIGTERM)
-                logger.info(f"Sent SIGTERM to daemon process {pid}")
-                
-                # Wait for process to terminate
-                time.sleep(5)
-                
-                # Force kill if still running
+                os.kill(pid, 0)
+            except ProcessLookupError:
+                logger.info("Daemon process is not running, cleaning up PID file")
+                os.remove(self.config.daemon.pid_file)
+                return
+            
+            # Send SIGTERM to the process
+            os.kill(pid, signal.SIGTERM)
+            logger.info(f"Sent SIGTERM to daemon process {pid}")
+            
+            # Wait for process to terminate gracefully
+            for i in range(10):  # Wait up to 10 seconds
+                time.sleep(1)
+                try:
+                    os.kill(pid, 0)
+                except ProcessLookupError:
+                    logger.info("Daemon process terminated gracefully")
+                    break
+            else:
+                # Force kill if still running after 10 seconds
                 try:
                     os.kill(pid, signal.SIGKILL)
                     logger.info(f"Force killed daemon process {pid}")
                 except ProcessLookupError:
                     pass
+            
+            # Clean up PID file
+            if os.path.exists(self.config.daemon.pid_file):
+                os.remove(self.config.daemon.pid_file)
+                logger.info("Cleaned up PID file")
                     
-            except (FileNotFoundError, ValueError, ProcessLookupError) as e:
-                logger.error(f"Error stopping daemon: {e}")
+        except (FileNotFoundError, ValueError, ProcessLookupError) as e:
+            logger.error(f"Error stopping daemon: {e}")
+            # Clean up PID file even if there was an error
+            if os.path.exists(self.config.daemon.pid_file):
+                os.remove(self.config.daemon.pid_file)
     
     def status(self) -> bool:
         """Check if daemon is running."""
         try:
+            # Check if PID file exists
+            if not os.path.exists(self.config.daemon.pid_file):
+                return False
+            
             with open(self.config.daemon.pid_file, 'r') as f:
                 pid = int(f.read().strip())
             
             # Check if process is running
             os.kill(pid, 0)
-            return True
+            
+            # Additional check: verify the process is actually our daemon
+            # by checking if it's a Python process with our script
+            try:
+                with open(f"/proc/{pid}/cmdline", 'r') as f:
+                    cmdline = f.read()
+                    # Check if it's a Python process running our main script
+                    if "python" in cmdline and ("main.py" in cmdline or "yadisk_sync" in cmdline):
+                        return True
+                    else:
+                        # PID exists but it's not our daemon, clean up stale PID file
+                        logger.warning(f"PID {pid} exists but is not our daemon process, cleaning up stale PID file")
+                        os.remove(self.config.daemon.pid_file)
+                        return False
+            except (FileNotFoundError, PermissionError):
+                # Can't read /proc/{pid}/cmdline, assume it's not our daemon
+                logger.warning(f"Cannot verify process {pid}, cleaning up stale PID file")
+                os.remove(self.config.daemon.pid_file)
+                return False
+                
         except (FileNotFoundError, ValueError, ProcessLookupError):
+            # Process doesn't exist, clean up stale PID file if it exists
+            if os.path.exists(self.config.daemon.pid_file):
+                logger.warning("Daemon process not found, cleaning up stale PID file")
+                os.remove(self.config.daemon.pid_file)
             return False
 
 
