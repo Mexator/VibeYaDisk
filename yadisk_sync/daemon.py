@@ -139,7 +139,6 @@ class YadiskSyncDaemon:
             working_directory=self.config.local_root,
             umask=0o002,
             pidfile=daemon.pidfile.TimeoutPIDLockFile(self.config.daemon.pid_file),
-            files_preserve=[logger._core.handlers[0]._sink._stream],
             signal_map={
                 signal.SIGTERM: self._signal_handler,
                 signal.SIGINT: self._signal_handler,
