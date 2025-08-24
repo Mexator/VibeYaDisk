@@ -88,21 +88,6 @@ You can run commands using any of these methods:
 yadisk-sync get-token
 yadisk-sync start
 yadisk-sync stop
-
-# Method 2: Using Python module syntax
-python -m yadisk_sync get-token
-python -m yadisk_sync start
-python -m yadisk_sync stop
-
-# Method 3: Using the launcher script
-./yadisk-sync get-token
-./yadisk-sync start
-./yadisk-sync stop
-
-# Method 4: From the project directory
-python main.py get-token
-python main.py start
-python main.py stop
 ```
 
 #### Available Commands
@@ -146,40 +131,3 @@ myYaDisk/
     ├── daemon.py         # Daemon process management
     └── cli.py           # CLI interface
 ```
-
-## How It Works
-
-1. **Configuration Loading**: The application loads settings from `config.yaml`
-2. **Token Management**: OAuth tokens can be generated automatically or set manually
-3. **Connection Test**: Validates the Yandex.Disk token and connection
-4. **File Watching**: Monitors configured directories for changes (if enabled)
-5. **Periodic Sync**: Runs sync operations at configured intervals
-6. **Sync Operations**:
-   - Upload: Copies local files to Yandex.Disk
-   - Download: Copies Yandex.Disk files to local
-   - Bidirectional: Syncs in both directions
-
-## Logging
-
-The daemon logs to the configured log file with rotation:
-
-- Log files are rotated when they reach 10 MB
-- Logs are retained for 7 days
-- Log level can be adjusted with the `--verbose` flag
-
-## Error Handling
-
-The application includes robust error handling:
-
-- Automatic retry on network errors
-- Graceful handling of missing directories
-- Process recovery on crashes
-- Detailed error logging
-
-## Security Considerations
-
-- Store your application credentials securely
-- Use appropriate file permissions for configuration files
-- Consider using environment variables for sensitive data
-- Regularly rotate your OAuth tokens
-- Never commit tokens or secrets to version control

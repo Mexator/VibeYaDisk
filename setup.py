@@ -17,18 +17,16 @@ with open("requirements.txt") as f:
 setup(
     name="yadisk-sync-daemon",
     version="1.0.0",
-    author="Your Name",
-    author_email="your.email@example.com",
+    author = "Cursor (Промптил я, AHTOXA)"
+    author_email = "ahtoxa@ahtoxa.ru"
     description="A Python CLI application that syncs directories with Yandex.Disk as a daemon process",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/yourusername/yadisk-sync-daemon",
+    url="https://github.com/Mexator/VibeYaDisk",
     packages=find_packages(),
     classifiers=[
-        "Development Status :: 4 - Beta",
-        "Intended Audience :: Developers",
-        "Intended Audience :: System Administrators",
-        "License :: OSI Approved :: MIT License",
+        "Development Status :: 3 - Alpha",
+        "Intended Audience :: End Users/Desktop",
         "Operating System :: OS Independent",
         "Programming Language :: Python :: 3",
         "Programming Language :: Python :: 3.7",
@@ -51,9 +49,9 @@ setup(
     zip_safe=False,
     keywords="yandex disk sync daemon backup cloud storage",
     project_urls={
-        "Bug Reports": "https://github.com/yourusername/yadisk-sync-daemon/issues",
-        "Source": "https://github.com/yourusername/yadisk-sync-daemon",
-        "Documentation": "https://github.com/yourusername/yadisk-sync-daemon#readme",
+        "Bug Reports": "https://github.com/Mexator/VibeYaDisk/issues",
+        "Source": "https://github.com/Mexator/VibeYaDisk",
+        "Documentation": "https://github.com/Mexator/VibeYaDisk#readme",
     },
 )
 
