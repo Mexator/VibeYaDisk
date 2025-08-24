@@ -345,7 +345,6 @@ class YadiskClient:
         for rel_path in all_files:
             local_file = local_files.get(rel_path)
             remote_file = remote_files.get(rel_path)
-            logger.info(f"Files {local_file}, {remote_file}")
             
             if local_file and remote_file:
                 # File exists on both sides - compare hashes and timestamps
@@ -398,10 +397,19 @@ class YadiskClient:
                         success = False
             
             elif local_file:
-                # File only exists locally - upload it
-                logger.info(f"Uploading new local file: {rel_path}")
-                if not self.upload_file(local_file['path'], local_file['remote_path']):
-                    success = False
+                if rel_path in previous_state:
+                    # File existed before, but now only local: deleted remotely, so delete local
+                    logger.info(f"Remote file was deleted, removing local file: {rel_path}")
+                    try:
+                        os.remove(local_file['path'])
+                    except Exception as e:
+                        logger.error(f"Failed to remove local file {local_file['path']}: {e}")
+                        success = False
+                else:
+                    # New local file, upload it
+                    logger.info(f"Uploading new local file: {rel_path}")
+                    if not self.upload_file(local_file['path'], local_file['remote_path']):
+                        success = False
             
             elif remote_file:
                 # File only exists remotely - check if it was deleted locally
