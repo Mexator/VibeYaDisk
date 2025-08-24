@@ -131,18 +131,18 @@ class YadiskClient:
             return path[5:]
         return path
     
-    def _get_metadata_dir(self, local_dir: str) -> str:
+    def _get_metadata_dir(self) -> str:
         """Get the metadata directory path for a given local directory."""
-        return os.path.join(os.path.dirname(local_dir), '.yadisk_metadata')
+        metadata_dir = os.path.join(Path.home(), ".yadisk-sync", "metadata")
+        os.makedirs(metadata_dir, exist_ok=True)
+        return metadata_dir
     
     def _get_sync_state_file(self, local_dir: str) -> str:
         """Get the path to the sync state file for a directory."""
         # Create a metadata directory outside of the synced directory
-        metadata_dir = self._get_metadata_dir(local_dir)
-        os.makedirs(metadata_dir, exist_ok=True)
-        
+        metadata_dir = self._get_metadata_dir()
+
         # Use a hash of the directory path to create a unique filename
-        import hashlib
         dir_hash = hashlib.md5(local_dir.encode()).hexdigest()
         return os.path.join(metadata_dir, f"sync_state_{dir_hash}.json")
     
@@ -285,24 +285,27 @@ class YadiskClient:
         
         # Get local files
         local_files = {}
-        for root, dirs, files in os.walk(local_dir):
-            for file_name in files:
-                local_path = os.path.join(root, file_name)
-                rel_path = os.path.relpath(local_path, local_dir)
-                remote_path = os.path.join(remote_dir, rel_path).replace('\\', '/')
-                
-                try:
-                    stat = os.stat(local_path)
-                    local_files[rel_path] = {
-                        'path': local_path,
-                        'remote_path': remote_path,
-                        'size': stat.st_size,
-                        'modified': datetime.fromtimestamp(stat.st_mtime),
-                        'hash': self.get_file_hash(local_path)
-                    }
-                except Exception as e:
-                    logger.error(f"Failed to get local file info for {local_path}: {e}")
-                    success = False
+        try:
+            for file_name in os.listdir(local_dir):
+                local_path = os.path.join(local_dir, file_name)
+                if os.path.isfile(local_path):
+                    rel_path = file_name
+                    remote_path = os.path.join(remote_dir, rel_path).replace('\\', '/')
+                    try:
+                        stat = os.stat(local_path)
+                        local_files[rel_path] = {
+                            'path': local_path,
+                            'remote_path': remote_path,
+                            'size': stat.st_size,
+                            'modified': datetime.fromtimestamp(stat.st_mtime),
+                            'hash': self.get_file_hash(local_path)
+                        }
+                    except Exception as e:
+                        logger.error(f"Failed to get local file info for {local_path}: {e}")
+                        success = False
+        except Exception as e:
+            logger.error(f"Failed to list files in {local_dir}: {e}")
+            success = False
         # Get remote files
         remote_files = {}
         try:
@@ -342,13 +345,14 @@ class YadiskClient:
         for rel_path in all_files:
             local_file = local_files.get(rel_path)
             remote_file = remote_files.get(rel_path)
+            logger.info(f"Files {local_file}, {remote_file}")
             
             if local_file and remote_file:
                 # File exists on both sides - compare hashes and timestamps
                 if local_file['hash'] == remote_file['hash']:
-                    logger.debug(f"Files identical: {rel_path}")
+                    logger.info(f"Files identical: {rel_path}")
                     continue
-                
+
                 # Files are different, compare timestamps
                 local_time = local_file['modified']
                 # Ensure local_time is timezone-naive
@@ -356,6 +360,7 @@ class YadiskClient:
                     local_time = local_time.replace(tzinfo=None)
                 
                 remote_time = remote_file['modified']
+                logger.info(f"Files are different: {rel_path}, local time: {local_time}, remote time: {remote_time}")
                 
                 # Convert remote_time to timezone-naive datetime for comparison
                 if isinstance(remote_time, str):
