@@ -10,6 +10,7 @@ from typing import List, Dict, Optional
 from datetime import datetime
 import yadisk
 from loguru import logger
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
 class YadiskClient:
@@ -19,6 +20,7 @@ class YadiskClient:
         """Initialize Yandex.Disk client."""
         self.client = yadisk.YaDisk(token=token)
         self._test_connection(verbose=verbose_connection_test)
+        self.executor = ThreadPoolExecutor(max_workers=32)
     
     def _test_connection(self, verbose: bool = False) -> None:
         """Test connection to Yandex.Disk."""
@@ -457,11 +459,13 @@ class YadiskClient:
         
         # Sync subdirectories
         all_dirs = local_dirs | remote_dirs
+        futures = []
         for rel_dir in all_dirs:
             local_subdir = os.path.join(local_dir, rel_dir)
             remote_subdir = os.path.join(remote_dir, rel_dir).replace('\\', '/')
-            
-            if not self._sync_bidirectional(local_subdir, remote_subdir):
+            futures.append(self.executor.submit(self._sync_bidirectional, local_subdir, remote_subdir))
+        for future in as_completed(futures):
+            if not future.result():
                 success = False
         
         # Save current state for next sync
