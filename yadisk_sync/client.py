@@ -343,119 +343,25 @@ class YadiskClient:
         
         # Compare and sync files
         all_files = set(local_files.keys()) | set(remote_files.keys())
-        
         for rel_path in all_files:
             local_file = local_files.get(rel_path)
             remote_file = remote_files.get(rel_path)
-            
-            if local_file and remote_file:
-                # File exists on both sides - compare hashes and timestamps
-                if local_file['hash'] == remote_file['hash']:
-                    logger.info(f"Files identical: {rel_path}")
-                    continue
-
-                # Files are different, compare timestamps
-                local_time = local_file['modified']
-                # Ensure local_time is timezone-naive
-                if local_time.tzinfo is not None:
-                    local_time = local_time.replace(tzinfo=None)
-                
-                remote_time = remote_file['modified']
-                logger.info(f"Files are different: {rel_path}, local time: {local_time}, remote time: {remote_time}")
-                
-                # Convert remote_time to timezone-naive datetime for comparison
-                if isinstance(remote_time, str):
-                    try:
-                        remote_time = datetime.fromisoformat(remote_time.replace('Z', '+00:00'))
-                        # Make timezone-naive for comparison
-                        remote_time = remote_time.replace(tzinfo=None)
-                    except ValueError:
-                        # If parsing fails, use a default datetime
-                        remote_time = datetime.fromtimestamp(0)
-                elif isinstance(remote_time, datetime):
-                    # If it's already a datetime, make sure it's timezone-naive
-                    if remote_time.tzinfo is not None:
-                        remote_time = remote_time.replace(tzinfo=None)
-                else:
-                    # Fallback for other types
-                    remote_time = datetime.fromtimestamp(0)
-                
-                if local_time > remote_time:
-                    # Local file is newer
-                    logger.info(f"Uploading newer local file: {rel_path}")
-                    if not self.upload_file(local_file['path'], local_file['remote_path']):
-                        success = False
-                elif remote_time > local_time:
-                    # Remote file is newer
-                    logger.info(f"Downloading newer remote file: {rel_path}")
-                    if not self.download_file(remote_file['remote_path'], remote_file['path']):
-                        success = False
-                else:
-                    # Same timestamp but different hashes - conflict
-                    logger.warning(f"Conflict detected for {rel_path} - same timestamp but different content")
-                    # For now, prefer local file (could be made configurable)
-                    logger.info(f"Resolving conflict by uploading local file: {rel_path}")
-                    if not self.upload_file(local_file['path'], local_file['remote_path']):
-                        success = False
-            
-            elif local_file:
-                if rel_path in previous_state:
-                    # File existed before, but now only local: deleted remotely, so delete local
-                    logger.info(f"Remote file was deleted, removing local file: {rel_path}")
-                    try:
-                        os.remove(local_file['path'])
-                    except Exception as e:
-                        logger.error(f"Failed to remove local file {local_file['path']}: {e}")
-                        success = False
-                else:
-                    # New local file, upload it
-                    logger.info(f"Uploading new local file: {rel_path}")
-                    if not self.upload_file(local_file['path'], local_file['remote_path']):
-                        success = False
-            
-            elif remote_file:
-                # File only exists remotely - check if it was deleted locally
-                if rel_path in previous_state:
-                    # File existed in previous sync but not now - it was deleted locally
-                    logger.info(f"Local file was deleted, moving remote file to trash: {rel_path}")
-                    if not self.trash_file(remote_file['remote_path']):
-                        success = False
-                else:
-                    # File only exists remotely - download it
-                    logger.info(f"Downloading new remote file: {rel_path}")
-                    if not self.download_file(remote_file['remote_path'], remote_file['path']):
-                        success = False
+            if not self._sync_file(rel_path, local_file, remote_file, previous_state):
+                success = False
         
         # Handle directories recursively
-        local_dirs = set()
-        for root, dirs, files in os.walk(local_dir):
-            for dir_name in dirs:
-                local_path = os.path.join(root, dir_name)
-                rel_path = os.path.relpath(local_path, local_dir)
-                local_dirs.add(rel_path)
-        
-        remote_dirs = set()
-        try:
-            remote_items = self.list_files(remote_dir)
-            for item in remote_items:
-                if item['type'] == 'dir':
-                    # Handle disk: prefix in remote paths
-                    remote_path = item['path']
-                    if remote_path.startswith('disk:'):
-                        remote_path = remote_path[5:]  # Remove 'disk:' prefix
-                    
-                    # Extract the directory name from the remote path
-                    remote_dirname = os.path.basename(remote_path)
-                    # For directories directly in the remote directory, use just the directory name
-                    if remote_path == f"{remote_dir}/{remote_dirname}":
-                        rel_path = remote_dirname
-                    else:
-                        # For directories in subdirectories, calculate relative path properly
-                        rel_path = remote_path.replace(remote_dir + '/', '')
-                    remote_dirs.add(rel_path)
-        except Exception as e:
-            logger.error(f"Failed to get remote directories: {e}")
-            success = False
+        local_dirs, remote_dirs = self._load_dirs(local_dir, remote_dir)
+
+        all_dirs = local_dirs | remote_dirs
+        futures = []
+        for rel_dir in all_dirs:
+            futures.append(self.executor.submit(self._sync_directory_entry, rel_dir, local_dir, remote_dir, previous_state))
+        for future in as_completed(futures):
+            if not future.result():
+                success = False
+
+        # reload dirs after possible deletion
+        local_dirs, remote_dirs = self._load_dirs(local_dir, remote_dir)
         
         # Sync subdirectories
         all_dirs = local_dirs | remote_dirs
@@ -469,7 +375,12 @@ class YadiskClient:
                 success = False
         
         # Save current state for next sync
-        current_state = {rel_path: info for rel_path, info in local_files.items()}
+        current_state = {}
+        for rel_path, info in local_files.items():
+            current_state[rel_path] = {**info, "type": "file"}
+        for rel_dir in local_dirs:
+            if rel_dir not in current_state:
+                current_state[rel_dir] = {"type": "dir"}
         self._save_sync_state(local_dir, current_state)
         
         if success:
@@ -478,3 +389,141 @@ class YadiskClient:
             logger.error(f"Bidirectional sync completed with errors: {local_dir} <-> {remote_dir}")
         
         return success
+
+    def _load_dirs(self, local_dir, remote_dir):
+        local_dirs = set()
+        remote_dirs = set()
+
+        # Walk local directories
+        for root, dirs, files in os.walk(local_dir):
+            for d in dirs:
+                dir_path = os.path.relpath(os.path.join(root, d), local_dir)
+                local_dirs.add(dir_path)
+
+        # List remote directories
+        try:
+            items = self.client.listdir(remote_dir)
+            for item in items:
+                if item['type'] == 'dir':
+                    remote_path = item['path']
+                    if remote_path.startswith('disk:'):
+                        remote_path = remote_path[5:]
+                    remote_dirname = os.path.basename(remote_path)
+                    if remote_path == f"{remote_dir}/{remote_dirname}":
+                        rel_path = remote_dirname
+                    else:
+                        rel_path = remote_path.replace(remote_dir + '/', '')
+                    remote_dirs.add(rel_path)
+        except Exception as e:
+            logger.error(f"Failed to list remote directories: {e}")
+
+        return (local_dirs, remote_dirs)
+
+    def _sync_file(self, rel_path, local_file, remote_file, previous_state):
+        """Sync a single file between local and remote."""
+        success = True
+        if local_file and remote_file:
+            # File exists on both sides - compare hashes and timestamps
+            if local_file['hash'] == remote_file['hash']:
+                logger.debug(f"Files identical: {rel_path}")
+                return True
+            # Files are different, compare timestamps
+            local_time = local_file['modified']
+            if local_time.tzinfo is not None:
+                local_time = local_time.replace(tzinfo=None)
+            remote_time = remote_file['modified']
+            if isinstance(remote_time, str):
+                try:
+                    remote_time = datetime.fromisoformat(remote_time.replace('Z', '+00:00'))
+                    remote_time = remote_time.replace(tzinfo=None)
+                except ValueError:
+                    remote_time = datetime.fromtimestamp(0)
+            elif isinstance(remote_time, datetime):
+                if remote_time.tzinfo is not None:
+                    remote_time = remote_time.replace(tzinfo=None)
+            else:
+                remote_time = datetime.fromtimestamp(0)
+            if local_time > remote_time:
+                logger.info(f"Uploading newer local file: {rel_path}")
+                if not self.upload_file(local_file['path'], local_file['remote_path']):
+                    success = False
+            elif remote_time > local_time:
+                logger.info(f"Downloading newer remote file: {rel_path}")
+                if not self.download_file(remote_file['remote_path'], remote_file['path']):
+                    success = False
+            else:
+                logger.warning(f"Conflict detected for {rel_path} - same timestamp but different content")
+                logger.info(f"Resolving conflict by uploading local file: {rel_path}")
+                if not self.upload_file(local_file['path'], local_file['remote_path']):
+                    success = False
+        elif local_file:
+            if rel_path in previous_state:
+                logger.info(f"Remote file was deleted, removing local file: {rel_path}")
+                try:
+                    os.remove(local_file['path'])
+                except Exception as e:
+                    logger.error(f"Failed to remove local file {local_file['path']}: {e}")
+                    success = False
+            else:
+                logger.info(f"Uploading new local file: {rel_path}")
+                if not self.upload_file(local_file['path'], local_file['remote_path']):
+                    success = False
+        elif remote_file:
+            if rel_path in previous_state:
+                logger.info(f"Local file was deleted, moving remote file to trash: {rel_path}")
+                if not self.trash_file(remote_file['remote_path']):
+                    success = False
+            else:
+                logger.info(f"Downloading new remote file: {rel_path}")
+                if not self.download_file(remote_file['remote_path'], remote_file['path']):
+                    success = False
+        return success
+
+    def _sync_directory_entry(self, rel_dir, local_dir, remote_dir, previous_state):
+        success = True
+        local_subdir = os.path.join(local_dir, rel_dir)
+        remote_subdir = os.path.join(remote_dir, rel_dir).replace('\\', '/')
+        local_exists = os.path.isdir(local_subdir)
+        remote_exists = self.path_exists(remote_subdir)
+        was_present = rel_dir in previous_state and previous_state[rel_dir].get('type') == 'dir'
+    
+        # Directory exists locally but not remotely
+        if local_exists and not remote_exists:
+            if was_present:
+                # Deleted remotely, so remove locally if empty
+                if not os.listdir(local_subdir):
+                    logger.info(f"Remote directory was deleted, removing local empty directory: {local_subdir}")
+                    try:
+                        os.rmdir(local_subdir)
+                    except Exception as e:
+                        logger.error(f"Failed to remove local directory {local_subdir}: {e}")
+                        success = False
+            else:
+                # New local directory, create remotely
+                logger.info(f"Creating remote directory: {remote_subdir}")
+                if not self.create_directory(remote_subdir):
+                    success = False
+    
+        # Directory exists remotely but not locally
+        elif remote_exists and not local_exists:
+            if was_present:
+                # Deleted locally, so remove remotely if empty
+                remote_items = self.list_files(remote_subdir)
+                if not remote_items:
+                    logger.info(f"Local directory was deleted, removing remote empty directory: {remote_subdir}")
+                    try:
+                        self.client.remove(self._normalize_api_path(remote_subdir), permanently=True)
+                    except Exception as e:
+                        logger.error(f"Failed to remove remote directory {remote_subdir}: {e}")
+                        success = False
+            else:
+                # New remote directory, create locally
+                logger.info(f"Creating local directory: {local_subdir}")
+                try:
+                    os.makedirs(local_subdir, exist_ok=True)
+                except Exception as e:
+                    logger.error(f"Failed to create local directory {local_subdir}: {e}")
+                    success = False
+    
+        # Directory exists on both sides: nothing to do
+        return success        
